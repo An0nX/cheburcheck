@@ -7,6 +7,7 @@ use chrono::{DateTime, Utc};
 use ipnet::IpNet;
 use log::error;
 use std::collections::{HashMap, HashSet};
+use std::io;
 use std::net::IpAddr;
 use std::sync::Arc;
 use maxminddb::MaxMindDbError;
@@ -52,6 +53,8 @@ pub enum CheckError {
     #[error("domain not found")]
     NotFound,
 }
+
+pub type Bases = (<GeoIp as Updatable>::Base, <RuBlacklist as Updatable>::Base, <CdnList as Updatable>::Base);
 
 impl Checker {
     pub async fn new() -> Checker {
@@ -132,38 +135,21 @@ impl Checker {
         self.rx.borrow().clone()
     }
 
-    pub async fn update_all(&self) {
-        match GeoIp::download().await {
-            Ok(base) => {
-                if let Err(e) = self.geo_ip.write().await.install(base).await {
-                    error!("Failed to update GeoIP: {}", e);
-                }
-            }
-            Err(e) => {
-                error!("Failed to download GeoIP: {}", e);
-            }
+    pub async fn download_all() -> Result<Bases, io::Error> {
+        Ok((GeoIp::download().await?, RuBlacklist::download().await?, CdnList::download().await?))
+    }
+
+    pub async fn update_all(&self, (geo_ip, ru_blacklist, cdn_list): Bases) {
+        if let Err(e) = self.geo_ip.write().await.install(geo_ip).await {
+            error!("Failed to update GeoIP: {}", e);
         }
-        match RuBlacklist::download().await {
-            Ok(base) => {
-                if let Err(e) = self.ru_blacklist.write().await.install(base).await {
-                    error!("Failed to update RKN: {}", e);
-                }
-            }
-            Err(e) => {
-                error!("Failed to download RKN: {}", e);
-            }
+        if let Err(e) = self.ru_blacklist.write().await.install(ru_blacklist).await {
+            error!("Failed to update RKN: {}", e);
+        }
+        if let Err(e) = self.cdn_list.write().await.install(cdn_list).await {
+            error!("Failed to update CDN: {}", e);
         }
 
-        match CdnList::download().await {
-            Ok(base) => {
-                if let Err(e) = self.cdn_list.write().await.install(base).await {
-                    error!("Failed to update CDN: {}", e);
-                }
-            }
-            Err(e) => {
-                error!("Failed to download CDN: {}", e);
-            }
-        }
         self.tx.send(Some(Utc::now())).unwrap();
     }
 

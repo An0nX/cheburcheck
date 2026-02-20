@@ -281,8 +281,14 @@ async fn rocket() -> _ {
         loop {
             interval.tick().await;
             log::info!("Updating all DBs");
-            checker_clone.read().await.update_all().await;
-            log::info!("Updated databases");
+            match Checker::download_all().await {
+                Ok(bases) => {
+                    log::info!("Downloaded, updating...");
+                    checker_clone.read().await.update_all(bases).await;
+                    log::info!("Updated databases");
+                },
+                Err(e) => log::error!("Failed to download all DBs"),
+            }
         }
     });
 
