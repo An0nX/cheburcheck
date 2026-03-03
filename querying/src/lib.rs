@@ -14,11 +14,15 @@ use maxminddb::MaxMindDbError;
 use thiserror::Error;
 use tokio::sync::{watch, RwLock};
 
+pub mod asn;
 pub mod geoip;
 pub mod lists;
 pub mod resolver;
 pub mod updater;
 pub mod target;
+pub mod subnet_sampler;
+
+pub use subnet_sampler::{sample_ipv4_subnet, sample_ipv6_subnet};
 
 pub struct Checker {
     rx: watch::Receiver<Option<DateTime<Utc>>>,
@@ -29,13 +33,16 @@ pub struct Checker {
     resolver: Resolver,
 }
 
+#[derive(Clone)]
 pub struct Check {
     pub verdict: CheckVerdict,
     pub geo: IpInfo,
     pub ips: Vec<IpAddr>,
     pub rkn_subnets: HashSet<IpNet>,
+    pub asn_info: Option<crate::asn::AsnInfo>,
 }
 
+#[derive(Clone)]
 pub enum CheckVerdict {
     Clear,
     Blocked {
@@ -117,17 +124,60 @@ impl Checker {
             .filter_map(|ip| ru_blacklist.contains_ip(ip))
             .collect();
 
+        let asn_info = if let Target::Asn(asn) = &target {
+            let prefixes = crate::asn::fetch_asn_prefixes_cached(
+                *asn,
+                |asn| self.resolver.asn_cache.get_cached_asn(asn),
+                |asn, prefixes| self.resolver.asn_cache.cache_asn(asn, prefixes),
+            )
+            .await
+            .unwrap_or_default();
+
+            let mut blocked_prefixes: Vec<String> = prefixes
+                .iter()
+                .filter(|prefix| {
+                    if let Ok(ipnet) = prefix.parse::<IpNet>() {
+                        ru_blacklist.contains_ip(&ipnet.network()).is_some()
+                    } else {
+                        false
+                    }
+                })
+                .cloned()
+                .collect();
+
+            for prefix in &prefixes {
+                if let Ok(ipnet) = prefix.parse::<IpNet>() {
+                    if cdn_list.contains(&ipnet.network()).is_some() {
+                        if !blocked_prefixes.contains(prefix) {
+                            blocked_prefixes.push(prefix.clone());
+                        }
+                    }
+                }
+            }
+
+            Some(crate::asn::AsnInfo::new(*asn, prefixes, blocked_prefixes))
+        } else {
+            None
+        };
+
+        let asn_has_blocked = asn_info.as_ref()
+            .map(|info| !info.blocked_prefixes.is_empty())
+            .unwrap_or(false);
+
+        let has_blocked_subnets = !rkn_subnets.is_empty();
+
         Ok(Check {
-            verdict: match (domain, cdn_provider_subnets.is_empty()) {
-                (None, true) => CheckVerdict::Clear,
-                (domain, _) => CheckVerdict::Blocked {
+            verdict: match (domain, cdn_provider_subnets.is_empty(), asn_has_blocked, has_blocked_subnets) {
+                (None, true, false, false) => CheckVerdict::Clear,
+                (domain, _, _, _) => CheckVerdict::Blocked {
                     rkn_domain: domain,
                     cdn_provider_subnets,
                 },
             },
             rkn_subnets,
             geo,
-            ips
+            ips,
+            asn_info,
         })
     }
 
