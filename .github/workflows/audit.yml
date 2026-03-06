@@ -1,0 +1,45 @@
+name: "Security Audit"
+
+on:
+  push:
+    branches: [master]
+    paths:
+      # Запуск при изменении workflow
+      - '.github/workflows/audit.yml'
+      # Запуск при изменении зависимостей
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      # Запуск при изменении конфигурации аудита
+      - '**/audit.toml'
+  pull_request:
+    branches: [master]
+    paths:
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      - '**/audit.toml'
+  # Периодическая проверка для обнаружения новых advisory
+  schedule:
+    - cron: '0 0 * * *'  # Каждый день в полночь UTC
+  # Ручной запуск
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/audit@v1
+        name: Audit Rust Dependencies
+        with:
+          # Список RUSTSEC ID для игнорирования (через запятую), раскомментируйте при необходимости:
+          # ignore: RUSTSEC-2020-0036,RUSTSEC-2021-0145
+
+          # Создание issues для найденных уязвимостей (по умолчанию true на main/master)
+          create-issues: true
+
+          # Путь к Cargo.lock (раскомментируйте если не в корне):
+          # file: Cargo.lock
