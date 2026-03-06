@@ -47,9 +47,11 @@ RUN set -eux; \
     rustc --version
 
 # Копирование файлов манифеста ПЕРВЫМИ для оптимизации кеша
+# Копируем ВСЕ манифесты workspace-крейтов, чтобы cargo fetch мог распарсить workspace
 COPY Cargo.toml Cargo.lock ./
+COPY website/Cargo.toml ./website/Cargo.toml
 
-# Создание минимального проекта для предварительной загрузки зависимостей
+# Создание минимальных заглушек для предварительной загрузки зависимостей
 RUN set -eux; \
     mkdir -p src/bin website/src; \
     echo "fn main() {}" > src/main.rs; \
@@ -83,8 +85,10 @@ RUN cp /tmp/main /build/main
 
 ################################################################################
 # Runtime Stage - Минимальный образ distroless для продакшена
+# Используем distroless/cc вместо distroless/static, т.к. Rust-бинарники
+# могут зависеть от libgcc (unwinding, C-зависимости)
 ################################################################################
-FROM gcr.io/distroless/static:nonroot
+FROM gcr.io/distroless/cc:nonroot
 
 # Метаданные образа
 LABEL org.opencontainers.image.title="Website" \
