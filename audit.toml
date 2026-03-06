@@ -1,0 +1,14 @@
+# Настройки аудита уязвимостей
+[advisories]
+# Список RUSTSEC ID для игнорирования
+ignore = [
+    # "RUSTSEC-2020-0036",
+]
+
+# Включить предупреждения по информационным advisory
+informational_warnings = ["unmaintained", "unsound", "notice"]
+
+# Настройки для yanked-крейтов
+[yanked]
+enabled = true
+update_index = true
