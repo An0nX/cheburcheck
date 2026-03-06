@@ -25,9 +25,9 @@ ENV CARGO_NET_GIT_FETCH_WITH_CLI=true \
 # Установка необходимых зависимостей для сборки (одна команда для оптимизации слоев)
 RUN apk add --no-cache \
     curl \
-    openssl-static \
     openssl-dev \
-    pkg-config \
+    openssl-libs-static \
+    pkgconf \
     musl-dev \
     && rm -rf /var/cache/apk/*
 
