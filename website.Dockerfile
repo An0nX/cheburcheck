@@ -71,10 +71,12 @@ LABEL org.opencontainers.image.title="Website" \
 
 WORKDIR /app
 
-COPY --from=build --chown=nonroot:nonroot /build/main ./
-COPY --from=build --chown=nonroot:nonroot /build/website/Rocket.toml ./
-COPY --from=build --chown=nonroot:nonroot /build/website/static ./static
-COPY --from=build --chown=nonroot:nonroot /build/website/templates ./templates
+COPY --from=build --chown=nonroot:nonroot \
+    /build/main \
+    /build/website/Rocket.toml \
+    /build/website/static \
+    /build/website/templates \
+    ./
 
 ENV ROCKET_ADDRESS=::
 ENV ROCKET_PORT=8080
